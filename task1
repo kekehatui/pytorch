@@ -1,0 +1,54 @@
+5.1这种模型的定义方式感觉最为简单
+1.必须继承nn.Module这个类，要让PyTorch知道这个类是一个Module
+2.在init(self)中设置好需要的"组件"(如conv,pooling,Linear,BatchNorm等)
+3.最后，在forward(self,x)中定义好的“组件”进行组装，就像搭积木，把网络结构搭建出来，这样一个模型就定义好了。
+class GraphConvolution(nn.Module):
+
+    def __init__(self, in_features, out_features, bias=True):
+        super(GraphConvolution, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.weight = Parameter(torch.FloatTensor(in_features, out_features))
+        if bias:
+            self.bias = Parameter(torch.FloatTensor(out_features))
+        else:
+            self.register_parameter('bias', None)
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        stdv = 1. / math.sqrt(self.weight.size(1))
+        self.weight.data.uniform_(-stdv, stdv)
+        if self.bias is not None:
+            self.bias.data.uniform_(-stdv, stdv)
+
+    def forward(self, input, adj):
+        support = input @ self.weight    # X * W
+        output = adj @ support           # A * X * W
+        if self.bias is not None:        # A * X * W + b
+            return output + self.bias
+        else:
+            return output
+
+    def __repr__(self):
+        return self.__class__.__name__ + ' (' + str(self.in_features) + ' -> ' + str(self.out_features) + ')'
+
+
+class GCN(nn.Module):
+    def __init__(self):
+        super(GCN, self).__init__()
+        self.gc1 = GraphConvolution(GCN_FEATURE_DIM, GCN_HIDDEN_DIM)
+        self.ln1 = nn.LayerNorm(GCN_HIDDEN_DIM)
+        self.gc2 = GraphConvolution(GCN_HIDDEN_DIM, GCN_OUTPUT_DIM)
+        self.ln2 = nn.LayerNorm(GCN_OUTPUT_DIM)
+        self.relu1 = nn.LeakyReLU(0.2,inplace=True)
+        self.relu2 = nn.LeakyReLU(0.2,inplace=True)
+
+    def forward(self, x, adj):  			# x.shape = (seq_len, GCN_FEATURE_DIM); adj.shape = (seq_len, seq_len)
+        x = self.gc1(x, adj)  				# x.shape = (seq_len, GCN_HIDDEN_DIM)
+        x = self.relu1(self.ln1(x))
+        x = self.gc2(x, adj)
+        output = self.relu2(self.ln2(x))	# output.shape = (seq_len, GCN_OUTPUT_DIM)
+        return output
+
+5.2复杂模型的定义
+将模型高频重复的层的组合写为一个独立类模块
